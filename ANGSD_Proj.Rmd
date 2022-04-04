@@ -1,0 +1,124 @@
+---
+title: "Download and Begin Processing Data"
+author: "Aditi Gopalan"
+date: "20/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 
+
+Download at least one FASTQ file that you will be working with for your project. Document the following details: 
+where did you get it from?
+
+I got this frorm the SRA https://trace.ncbi.nlm.nih.gov/Traces/sra/?run=SRR14704398
+
+what publication is it linked to?
+
+This experiment is linked to this publication https://pubmed.ncbi.nlm.nih.gov/34487377/
+
+who generated the data?
+
+The authors from McArdle Laboratory for Cancer Research, University of Wisconsin-Madison, Madison, WI, USA generated the data 
+
+how was the RNA extracted? what library prep was used? what cell type was used? what was the treatment/experimental condition? what sequencing platform was used?
+Selection: cDNA
+
+Fresh RNA was harvested using E.Z.N.A.® HP Total RNA Kit (#101414-852). TruSeq RNA Library Prep Kit v2 (#RS-122-2001) was used with 1 ug of total RNA for the construction of sequencing libraries. RNA libraries were prepared for sequencing using standard Illumina protocols
+
+
+## Align the FASTQ file with an appropriate aligner 
+
+I downloaded the file from the study mentioned above using
+
+```
+spack load sra-toolkit@2.10.7
+prefetch SRR14704398
+```
+I then ran this to download all the reads 
+
+```
+ fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --clip SRR14704398
+ ```
+ 
+I then indexed and ran STAR to align my reads here is my bash script 
+
+```
+#! /bin/bash -l
+
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --job-name=refIndex_ski4003
+#SBATCH --time=12:30:00
+#SBATCH --mem=45G
+#SBATCH --mail-user=adg4001@med.cornell.edu
+#SBATCH --mail-type=END,FAIL
+
+echo "Starting at:" `date`
+echo "This is job #:" $SLURM_JOB_ID
+echo "Running on node:" `hostname`
+echo "Running on cluster:" $SLURM_CLUSTER_NAME
+echo "This job was assigned the temporary directory:"$TMPDIR
+
+spack load star@2.7.0e
+
+STAR --runMode alignReads --runThreadN 16 --genomeDir /home/adg4001/proj_data/refIndex --readFilesIn /home/adg4001/proj_data/SRR14704398.fq.gz --readFilesCommand zcat --outFileNamePrefix /home/adg4001/proj_data/SRR14704398_STAR. --outSAMtype BAM SortedByCoordinate
+```
+
+This is what the log file for alignment looks like and the percentage of uniquely mapped reads is around 81%, which is great 
+
+```
+[adg4001@buddy proj_data]$ cat SRR14704398_STAR.Log.final.out
+                                 Started job on |       Feb 25 19:22:40
+                             Started mapping on |       Feb 25 19:23:04
+                                    Finished on |       Feb 25 19:34:06
+       Mapping speed, Million of reads per hour |       261.60
+
+                          Number of input reads |       48104696
+                      Average input read length |       50
+                                    UNIQUE READS:
+                   Uniquely mapped reads number |       39403635
+                        Uniquely mapped reads % |       81.91%
+                          Average mapped length |       49.85
+                       Number of splices: Total |       7524845
+            Number of splices: Annotated (sjdb) |       7461359
+                       Number of splices: GT/AG |       7452233
+                       Number of splices: GC/AG |       57383
+                       Number of splices: AT/AC |       7640
+               Number of splices: Non-canonical |       7589
+                      Mismatch rate per base, % |       0.15%
+                         Deletion rate per base |       0.00%
+                        Deletion average length |       1.48
+                        Insertion rate per base |       0.00%
+                       Insertion average length |       1.26
+                             MULTI-MAPPING READS:
+        Number of reads mapped to multiple loci |       7856886
+             % of reads mapped to multiple loci |       16.33%
+        Number of reads mapped to too many loci |       277369
+             % of reads mapped to too many loci |       0.58%
+                                  UNMAPPED READS:
+       % of reads unmapped: too many mismatches |       0.00%
+                 % of reads unmapped: too short |       1.03%
+                     % of reads unmapped: other |       0.14%
+                                  CHIMERIC READS:
+                       Number of chimeric reads |       0
+                            % of chimeric reads |       0.00
+```
+
+Parameters: 
+
+My average read length was 50, so I set the sjdbOverhang parameter to 49. I also set runThreadN to 16 to make it run faster. 
+
+I then ran bamqc on the output file 
+
+```
+/softlib/apps/EL7/BamQC/bin/bamqc SRR14704398_STAR.Aligned.sortedByCoord.out.bam .
+```
+
+Based on the results of bamqc, everything looks good!
+
+![bamqc results](C:\Users\aditi\Desktop\angsd\angsd-practice\111.jpg)
