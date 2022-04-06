@@ -1,0 +1,140 @@
+---
+title: "Angsd Project 2"
+author: "Aditi Gopalan"
+date: "03/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Downloading
+
+The SRA study number linked to the paper of my interest is SRP174612. I downloaded the accession file for the study and saved it as "runs.txt"
+
+These were the SRA numbers for the runs
+```
+SRR14704380
+SRR14704381
+SRR14704382
+SRR14704383
+SRR14704384
+SRR14704385
+SRR14704386
+SRR14704387
+SRR14704388
+SRR14704389
+SRR14704390
+SRR14704391
+SRR14704392
+SRR14704393
+SRR14704394
+SRR14704395
+SRR14704396
+SRR14704397
+SRR14704398
+SRR14704399
+SRR14704400
+```
+I then downloaded the files using the following bash script (download.sh)
+```
+#! /bin/bash -l
+
+# Batch commands
+
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --job-name=down_ad
+#SBATCH --time=48:00:00
+#SBATCH --mem=60G
+#SBATCH --mail-user=adg4001@med.corell.edu
+#SBATCH --mail-type=END,FAIL
+
+echo "Starting at:" `date` >> log.txt
+echo "This is job #:" $SLURM_JOB_ID >> log.txt
+echo "Running on node:" `hostname` >> log.txt
+echo "Running on cluster:" $SLURM_CLUSTER_NAME >> log.txt
+echo "This job was assigned the temporary (local) directory:" $TMPDIR >> log.txt
+
+spack load sra-toolkit@2.10.7
+
+for i in $(cat $'runs.txt'); do prefetch ${i}; fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --clip ${i}; done
+```
+
+## QC
+
+Running fastqc and MultiQC on the files using the bash script "fastq.sh"
+
+```
+#! /bin/bash -l
+
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --job-name=fastq_ad
+#SBATCH --time=48:00:00
+#SBATCH --mem=60G
+#SBATCH --mail-user=adg4001@med.corell.edu
+#SBATCH --mail-type=END,FAIL
+
+echo "Starting at:" `date` >> log.txt
+echo "This is job #:" $SLURM_JOB_ID >> log.txt
+echo "Running on node:" `hostname` >> log.txt
+echo "Running on cluster:" $SLURM_CLUSTER_NAME >> log.txt
+echo "This job was assigned the temporary (local) directory:" $TMPDIR >> log.txt
+spack load fastqc
+spack load -r py-multiqc
+
+find . -name "*.gz" | xargs -n 1 fastqc --extract
+
+multiqc .
+```
+
+The multiqc results look fine! 
+
+![1](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_base_sequence_quality_plot.png)
+
+![2](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_base_n_content_plot.png)
+![3](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_sequence_gc_content_plot.png)
+![4](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_sequence_quality_scores_plot.png)
+![5](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_sequence_duplication_levels_plot.png)
+
+## STAR Alignment 
+
+I then aligned the reads using "star.sh"
+
+```
+#! /bin/bash -l
+
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --job-name=star_ad
+#SBATCH --time=48:00:00
+#SBATCH --mem=60G
+#SBATCH --mail-user=adg4001@med.corell.edu
+#SBATCH --mail-type=END,FAIL
+
+echo "Starting at:" `date` >> log.txt
+echo "This is job #:" $SLURM_JOB_ID >> log.txt
+echo "Running on node:" `hostname` >> log.txt
+echo "Running on cluster:" $SLURM_CLUSTER_NAME >> log.txt
+echo "This job was assigned the temporary (local) directory:" $TMPDIR >> log.txt
+
+spack load star@2.7.0e
+spack load samtools@1.8%gcc@6.3.0
+
+# STAR: Map reads against the indexed genome
+for i in $(cat $'runs.txt');
+do STAR --runMode alignReads \
+        --genomeDir /athena/angsd/scratch/adg4001/refIndex \
+        --readFilesIn ${i}_pass.fastq.gz \
+        --readFilesCommand zcat \
+        --outFileNamePrefix /athena/angsd/scratch/adg4001/star/${i}. \
+        --outSAMtype BAM SortedByCoordinate;
+done
+
+for i in $(ls *.bam); do samtools index ${i}; done
+```
