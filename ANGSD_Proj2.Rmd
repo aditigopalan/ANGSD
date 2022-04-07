@@ -11,7 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Downloading
 
-The SRA study number linked to the paper of my interest is SRP174612. I downloaded the accession file for the study and saved it as "runs.txt"
+The SRA study number linked to the paper of my interest is SRP174612. https://trace.ncbi.nlm.nih.gov/Traces/study/?acc=SRP322205&o=acc_s%3Aa
+
+I downloaded the accession file for the study and saved it as "runs.txt"
 
 These were the SRA numbers for the runs
 ```
@@ -138,3 +140,82 @@ done
 
 for i in $(ls *.bam); do samtools index ${i}; done
 ```
+
+## Running FeatureCounts
+
+I ran featurcounts using the bash file "counts.sh" attached below
+ye
+```
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --job-name=adg4001_counts
+#SBATCH --time=48:00:00
+#SBATCH --mem=60G
+#SBATCH --mail-user=adg4001@med.cornell.edu
+#SBATCH --mail-type=END,FAIL
+
+echo "Starting at:" `date` >> log.txt
+echo "This is job #:" $SLURM_JOB_ID >> log.txt
+echo "Running on node:" `hostname` >> log.txt
+echo "Running on cluster:" $SLURM_CLUSTER_NAME >> log.txt
+echo "This job was assigned the temporary (local) directory:" $TMPDIR >> log.txt
+spack load subread
+
+featureCounts -f -O -p \
+              -t exon \
+                -a /athena/angsd/scratch/adg4001/refIndex/refGenome/gencode.v39.annotation.gtf  \
+              -o featurecounts/counts.txt \
+              /athena/angsd/scratch/adg4001/star/*.bam \
+```
+I scped the results to my local
+
+## Reading the counts
+
+
+```{r}
+
+library(ggplot2)
+theme_set(theme_bw(base_size = 16)) # for making plots
+library(magrittr) # for "pipe"-like coding in R (R < v.4.1)
+library(reshape)
+library(dplyr)
+
+folder <- "C:/Users/aditi/Desktop/angsd/ANGSD"
+
+counts <- read.delim('counts.txt.summary', sep='\t')
+
+names(counts) <- gsub(".Aligned.sortedByCoord.out.bam", "", names(counts))
+names(counts) <- gsub("alignments.", "", names(counts))
+names(counts) <- gsub("X.athena.angsd.scratch.adg4001.star.", "", names(counts))
+
+
+df <- function(d){
+  d <- d[d$Status %in% c('Assigned', 'Unassigned_NoFeatures', 'Unassigned_Ambiguity'),]
+  df <- data.frame()
+  
+  for(i in 2:dim(d)[2]){
+    for(j in 1:length(d[,i])){
+      df <- rbind(df, c(colnames(d)[i], d$Status[j], d[j, i]))
+    }
+  }
+  names(df) <- c('Sample', 'Status', '# Reads')
+  df$`# Reads` <- as.numeric(df$`# Reads`)
+  return(df)
+}
+counts_finals <- df(counts)
+
+#Plotting
+library(ggplot2)
+ggplot(counts_finals, aes(fill=Status, x=`Sample`, y=`# Reads`)) + 
+           geom_bar(position="dodge", stat="identity") +
+           ggtitle('Feature Counts') +
+           coord_flip()
+```
+The assigned reads for 
+SRR14704392
+SRR14704393
+SRR14704394 
+are a lot more than the unassigned reads 
+
+
