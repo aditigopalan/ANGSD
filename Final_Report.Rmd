@@ -197,18 +197,21 @@ find . -name "*.gz" | xargs -n 1 fastqc --extract
 multiqc .
 ```
 
-The multiqc results look fine! 
+The multiqc results look fine. The percentage of GC content was about 50% which makes sense. This was single end data. I knew there were splice variants in the data, but an alternative splicing analysis took way too much time. I ended up only plotting a PCA (which showed 97% variance and otherwise similar clustering). I see that there are two different phred quality scores. But since they are both acceptable, I didn't delve into the details.
 
 ![1](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_base_sequence_quality_plot.png)
 
 ![2](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_base_n_content_plot.png)
 ![3](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_sequence_gc_content_plot.png)
 ![4](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_per_sequence_quality_scores_plot.png)
+
+I did notice a concern among duplication levels, however. 
+
 ![5](C:/Users/aditi/Desktop/angsd/Angsd Project/fastqc_sequence_duplication_levels_plot.png)
 
 ## 3. STAR Alignment 
 
-I then aligned the reads using "star.sh"
+I then aligned the reads using "star.sh". The percentage of uniquely mapped reads were 79-80% on average for all the samples 
 
 ```
 #! /bin/bash -l
@@ -506,6 +509,10 @@ kk2 <- gseKEGG(geneList     = kegg_gene_list,
 dotplot(kk2, showCategory = 10, title = "Enriched Pathways" , split=".sign") + facet_grid(.~.sign)
 
 ```
+# Github 
+
+https://github.com/aditigopalan/ANGSD
+
 
 # Discussion 
 
