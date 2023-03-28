@@ -1,0 +1,136 @@
+---
+title: "HW2 - ANGSD "
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Aditi Gopalan 
+
+## Part 1 -- Extracting and Identifying unique barcodes 
+
+To just get the count of the number of unique barcodes, we can use:
+
+```
+egrep ^@ demo.fastq | cut -d":" -f10 | sort | uniq | wc -l
+20
+```
+
+There were 20 unique barcodes.
+
+Listing the barcodes:
+
+I used egrep to pull any lines that begin with "@", I then used the cut comman to separate by delimiter ":" and pull the last part of the identifier, which is the barcode. I then sorted the barcodes and printed the unique barcodes along with the number of times they appeared. 
+
+```
+egrep ^@ demo.fastq | cut -d":" -f10 | sort | uniq -c
+     12 AAGTGG
+     36 CAGTGG
+      5 GAATGG
+     64 GACTGG
+     45 GAGAGG
+      6 GAGCGG
+     50 GAGGGG
+      6 GAGTAG
+     59 GAGTCG
+     27 GAGTGA
+     76 GAGTGC
+  24260 GAGTGG
+     36 GAGTGT
+     44 GAGTTG
+     53 GATTGG
+     39 GCGTGG
+     73 GGGTGG
+     50 GTGTGG
+     20 NAGTGG
+     39 TAGTGG
+```
+
+
+## Part 2 
+
+I copied the PDB files using this command and checked if the files were copied using ls 
+
+```
+cp /home/luce/angsd/demo-data/*.pdb .
+
+```
+In order to process the files, I wrote the for loop indicated below. I used regex commands to identify lines in the file that start with "ATOM" to count the number of atoms. The most concise way to output the source organisms was to print just their scientific names, so I picked up lines that contained "ORGANISM_SCIENTIFIC" and split these lines by the delimiter ':' such that only the species names were chosen.
+```
+for file in *.pdb; do 
+
+echo "------------------------------------------"
+echo "Name of file being processed: $file" 
+echo "Number of lines: $(cat $file | wc -l)"
+echo "Number of atoms: $(egrep "^ATOM" $file | wc -l)" 
+echo "Source Organisms: $(egrep "*ORGANISM_SCIENTIFIC*" $file | cut -d":" -f2)"
+echo "------------------------------------------"
+
+done
+```
+
+The output was as follows: 
+
+```
+------------------------------------------
+Name of file being processed: 1A3B.pdb
+Number of lines: 2983
+Number of atoms: 2325
+Source Organisms:  HOMO SAPIENS;
+ HIRUDO MEDICINALIS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1AAP.pdb
+Number of lines: 1068
+Number of atoms: 866
+Source Organisms:
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1BTH.pdb
+Number of lines: 6359
+Number of atoms: 5812
+Source Organisms:  BOS TAURUS;
+ BOS TAURUS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1DZI.pdb
+Number of lines: 2895
+Number of atoms: 1714
+Source Organisms:  HOMO SAPIENS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1M3D.pdb
+Number of lines: 23352
+Number of atoms: 20797
+Source Organisms:  BOS TAURUS;
+ BOS TAURUS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1NMJ.pdb
+Number of lines: 543
+Number of atoms: 427
+Source Organisms:  RATTUS NORVEGICUS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1O91.pdb
+Number of lines: 4057
+Number of atoms: 3120
+Source Organisms:  MUS MUSCULUS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1TAW.pdb
+Number of lines: 2520
+Number of atoms: 2044
+Source Organisms:  BOS TAURUS;
+ HOMO SAPIENS;
+------------------------------------------
+------------------------------------------
+Name of file being processed: 1Y0F.pdb
+Number of lines: 4259
+Number of atoms: 2800
+Source Organisms:  RATTUS NORVEGICUS;
+ RATTUS NORVEGICUS;
+------------------------------------------
+```

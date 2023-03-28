@@ -1,0 +1,49 @@
+---
+title: "Angsd Project 2"
+author: "Aditi Gopalan"
+date: "26/05/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Downloading
+
+The SRA study number linked to the paper of my interest is SRP174612. I found the reads and dowloaded the files using SRA toolkit.
+
+These were the SRA numbers for the runs
+```
+SRR8375257
+SRR8375258
+SRR8375259
+SRR8375260
+```
+I then downloaded the files using 
+```
+spack load sra-toolkit@2.10.7
+prefetch SRR8375257
+
+```
+I then ran this to download all the reads 
+
+```
+ fastq-dump --gzip --skip-technical --readids --read-filter pass --dumpbase --clip SRR8375257
+ ```
+ 
+ 
+## QC
+
+Running fastqc and MultiQC on the downloaded files 
+
+```
+spack load fastqc
+spack load -r py-multiqc
+
+find . -name "*.gz" | xargs -n 1 fastqc --extract 
+
+multiqc .
+```
+
+

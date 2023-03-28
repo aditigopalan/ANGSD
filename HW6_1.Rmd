@@ -1,0 +1,136 @@
+---
+title: "Counting Reads"
+author: "Aditi Gopalan"
+date: "05/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 - Running featureCounts
+I first checked to see what parameters were in the function and what their respective default values were 
+
+```
+spack load subread 
+featureCounts default 
+
+```
+Here are two of the parameters 
+
+
+```-t :``` 
+This specifies the feature type. Only the rows which match with the feature type in the GTF file are included for counting. The default type is 'exon'
+
+```-g:``` This specifies the attribute type used to group features into metafeatures. In this case, exons into genes. The default value is 'gene_id'
+
+``` -T: ``` This specifies the number of threads. I used 5 for speed. 
+
+I ran the following command taking the reading annotations file and BAM file as input, the result will be stored in counts.txt 
+``` 
+featureCounts -T 5 -a /home/frd2007/ANGSD_2019/alignment/refGenome_S_cerevisiae/sacCer3.gtf -t exon -g gene_id -o counts.txt /home/frd2007/ANGSD_2019/alignment/*.bam
+```
+
+```
+|                                                                            ||
+||                         Read assignment finished.                          ||
+||                                                                            ||
+|| Summary of counting results can be found in file "counts.txt.summary"      ||
+||                                                                            ||
+\\===================== http://subread.sourceforge.net/ ======================//
+```
+
+## Part 2 - Reading the summary files 
+
+I copied the results on to my local computer using scp 
+
+```
+scp adg4001@aphrodite.med.cornell.edu:/home/adg4001/featurecounts/counts.txt .
+```
+Reading the files into R and renaming them for convenience 
+
+```{r reads}
+library(ggplot2)
+theme_set(theme_bw(base_size = 16)) # for making plots
+library(magrittr) # for "pipe"-like coding in R (R < v.4.1)
+
+folder <- "C:/Users/aditi/Desktop/angsd/angsd-practice" # download count table!
+## reading in featureCounts output
+readcounts <- paste0(folder, "/counts.txt.summary") %>%
+read.table(., header=TRUE)
+str(readcounts)
+
+orig_names <- names(readcounts) 
+names(readcounts) <- gsub(".*(WT|SNF2)(_[0-9]+).*", "\\1\\2", orig_names)
+str(readcounts)
+```
+
+I used grouped bar plot that displays the numbers of assigned and unassigned reads for either featureCounts run
+
+```{r plot}
+library(ggplot2)
+theme_set(theme_bw(base_size = 16)) # for making plots
+library(magrittr) # for "pipe"-like coding in R (R < v.4.1)
+library(reshape)
+library(dplyr)
+
+orig_names <- names(readcounts) 
+names(readcounts) <- gsub(".*(WT|SNF2)(_[0-9]+).*", "\\1\\2", orig_names)
+str(readcounts)
+#names(readcounts) <- NULL
+dataf <- t(readcounts)
+data_new <- dataf                        # Duplicate data frame
+colnames(data_new) <- dataf[1, ]          # Convert first row to header
+data_new = data_new[-1,]
+data_new <- data_new[,c("Assigned", "Unassigned_NoFeatures", "Unassigned_Ambiguity")]
+
+Sample <- c("SNF2_1", "SNF2_2", "SNF2_3", "SNF2_4","SNF2_5","WT_1","WT_2","WT_3","WT_4","WT_5") #Creating list of samples
+data=data.frame(cbind(Sample, data_new))   # combine them into a data frame
+      
+
+# melt the data frame for plotting
+data.m <- melt(data, id.vars='Sample')
+data.m$value <- as.numeric(data.m$value)
+names(data.m)[2] <- 'Status'
+names(data.m)[3] <- 'Read_Count'
+
+# plotting
+ggplot(data.m, aes(Sample, Read_Count)) +   
+  geom_bar(aes(fill = Status), position = "dodge", stat="identity") +
+  coord_flip() +
+             ggtitle('Assignment - featureCounts')
+```
+
+
+I ran exactly the same code for featureCounts from class, plot attached below 
+
+![](C:/Users/aditi/Desktop/angsd/angsd-practice/Rplot01.png)
+
+## Part 3 
+
+1.Some kind of normalization may be needed because the overall number of reads is greater for SNF2 than WT
+
+
+2.The number of assigned reads for SNF2 is higher than the corresponding WT samples. This probably means that in WT, the read probably overlapped with more than one exon. 
+
+
+## Part 4 
+
+I used awk to print the third column of the human annotation file that I'm using for my project. The third column contains the loci. I used sort and uniq to sort the loci and count the unique occurences of each.
+```
+awk '{print $3}' /athena/angsd/scratch/adg4001/reference/gencode.v39.annotation.gtf | sort | uniq -c
+```
+
+```
+      4
+      1 annotation
+ 839845 CDS
+1552754 exon
+  61533 gene
+    119 Selenocysteine
+  94201 start_codon
+  87665 stop_codon
+ 244939 transcript
+ 359946 UTR
+```

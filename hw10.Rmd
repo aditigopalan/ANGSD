@@ -1,0 +1,165 @@
+---
+title: "hw10"
+author: "Aditi Gopalan"
+date: "28/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## SingleCellExperiment Object 
+
+Creating the object 
+
+```{r cars}
+mat <- read.delim("C:/Users/aditi/Desktop/angsd/angsd-practice/WT-1.dge.txt", row.names=1)
+
+# Splitting off the gene length column.
+gene.length <- mat[,1]
+mat <- as.matrix(mat[,-1]) 
+
+dim(mat)
+
+```
+Snippet of the count matrix 
+
+```{r s}
+library(SingleCellExperiment)
+
+sce <- SingleCellExperiment(assays = list(counts = mat))
+
+sce 
+
+mat2 <- counts(sce)
+
+mat2[1:10,1:10]
+
+```
+
+Calculate the numbers of UMI for the first five cells, i.e. you should have 5 values in the end
+
+```{r umi}
+colSums(mat2[,1:5])
+```
+
+How many genes have non-zero counts in the first five cells?
+
+This means that if we sum up the rows, it should be greated than 0
+
+```{r 0}
+length(which(rowSums(mat2[,1:5]) > 0))
+```
+
+If you were to change the row- and column-names of the original matrix, how could you keep track of the original names?
+
+```{r 1}
+row_names <- rownames(mat2) 
+col_names <- colnames(mat2)
+```
+
+Following the scater workflow (Links to an external site.), generate histograms or density plots of (a) the total number of UMI counts per cell and (b) total number of expressed genes. (1pt plus 1pt extra-credit if you generate the plots with ggplot2).
+
+```{r 2}
+total_umi <- as.data.frame(colSums(mat2))
+names(total_umi)[1] <- 'LogTotalUMICount'
+total_umi <- log10(total_umi)
+
+library(ggplot2)
+
+bp <- ggplot(total_umi, aes(y = LogTotalUMICount)) + geom_histogram()  + xlab("Frequency")
+bp + coord_flip()
+
+```
+Total number of expressed genes
+```{r 3}
+total_gen <- as.data.frame(colSums(mat2!=0))
+names(total_gen)[1] <- 'LogTotalExpressedGenes'
+total_gen <- log10(total_gen)
+
+library(ggplot2)
+
+bp <- ggplot(total_gen, aes(y = LogTotalExpressedGenes)) + geom_histogram()  + xlab("Frequency")
+bp + coord_flip()
+```
+Describe in your own words what the two different histograms show and what that means for the data at hand.
+
+`UMI counts represent the absolute number of observed transcripts in each cell. Not all genes are expressed in a cell, so the total number of expressed genes will be lower than the UMI count.`
+
+For another extra-credit point, you could generate a histogram for “% mitochondrial reads”.
+
+```{r mi}
+#mi_reads <- as.data.frame(grep("^MT", row.names(mat)))
+mi_reads1 <- grep("^MT", row.names(mat))
+mi_frac <- as.data.frame(colSums(mat2[mi_reads1,]) / colSums(mat2))
+names(mi_frac)[1] <- 'MitochondrialGeneProportion'
+#mi_frac$MitochondrialGeneProportion
+
+library(ggplot2)
+bp <- ggplot(mi_frac, aes(y = MitochondrialGeneProportion)) + geom_histogram()  + xlab("Frequency") + ylab("Proportion of reads in mitochondrial genes")
+bp + coord_flip()
+
+```
+Decide on some threshold for either QC parameter and remove the corresponding cells. (1pt)
+
+The UMI counts per cell should generally be above 500, that is the low end of what we expect. If UMI counts are between 500-1000 counts, it is usable but the cells probably should have been sequenced more deeply. [source: https://hbctraining.github.io/scRNA-seq/lessons/04_SC_quality_control.html]
+
+```{r qc}
+library(tidyverse)
+mat_qc <- mat[, colSums(mat) >= 500]
+dim(mat_qc)
+```
+Using the filtered data set, normalize the counts using scran and scater and judge whether the size factors calculated by computeSumFactors show the expected behavior as shown in the figure below. (1pt)
+
+`The size factors calculated by computeSumFactors show the expected behavior as shown in the figure.`
+
+```{r norm}
+library(scran)
+sce_qc <- SingleCellExperiment(assays = list(counts = mat_qc))
+sce_qc <- scran::computeSumFactors(sce_qc)
+summary(sizeFactors(sce_qc))
+
+#umi_counts <- total_umi[, total_umi>=500]
+counts_qc <- colSums(mat_qc)
+sce_df <- data.frame(cbind('SizeFactors'=librarySizeFactors(sce_qc), 'TotalCounts'= counts_qc))
+
+ggplot(sce_df, aes(x=TotalCounts, y=SizeFactors)) + 
+  geom_point()
+```
+How can you access the normalized data matrix?
+
+logNormCounts() function from scuttle will compute a log-transformed normalized expression matrix and store it as another assay.
+
+```{r norrr}
+library(scuttle)
+sce_norm <- scuttle::logNormCounts(sce_qc)
+sce_norm
+
+mat3 <- counts(sce_norm)
+
+mat3[1:10,1:10]
+```
+Final question: what types of cells do you think you’re looking at? (1pt + 1 extra-credit point)
+
+I used SingleR [source:
+https://bioconductor.org/packages/devel/bioc/vignettes/SingleR/inst/doc/SingleR.html#:~:text=SingleR%20is%20an%20automatic%20annotation,on%20similarity%20to%20the%20reference.]
+
+As you can see, most were embryonic stem cells! I've explained my reasoning below:
+
+```{r }
+library(celldex)
+hpca.se <- HumanPrimaryCellAtlasData() #Annotated against built in reference
+library(SingleR)
+#hESCs contains counts from the normalize count matrix 
+hESCs = counts(sce_qc)
+# Using hpca.se reference to annotate each cell in hESCs via the SingleR()
+pred.hesc <- SingleR(test = hESCs, ref = hpca.se, assay.type.test=1,
+    labels = hpca.se$label.main)
+#Each row of the DataFrame "pred.hesc" contains prediction results for a single cell.
+print(unique(pred.hesc$labels))
+
+#Summarizing the types of cells here 
+table(pred.hesc$pruned.labels)
+
+```

@@ -1,0 +1,108 @@
+---
+title: "HW5"
+author: "Aditi Gopalan"
+date: "12/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 
+I wrote this shell file to run BWA and STAR after merging all technical replicates of WT1_1 using zcat
+
+```
+#! /bin/bash -l
+#SBATCH --partition=angsd_class
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=star_bwa_adg4001
+#SBATCH --time=00:20:00
+#SBATCH --mem=12G
+#SBATCH --mail-user=adg4001@med.cornell.edu
+#SBATCH --mail-type=END,FAIL
+echo “Starting at:” `date ` >> log.txt
+echo “This is job #:” $SLURM_JOB_ID >> log.txt
+echo “Running on node:” `hostname ` >> log.txt
+echo “Running on cluster:” $SLURM_CLUSTER_NAME >> log.txt
+echo “This job was assigned the temporary directory:” $TMPDIR >> log.txt
+spack load bwa@0.7.15% gcc@6.3.0
+spack load star@2.7.0e
+bwa index -p /home/adg4001/referenceGenomes/sacCer3_BWAindex/sacCer3 sacCer3.fa
+bwa mem /home/adg4001/referenceGenomes/sacCer3_BWAindex/sacCer3 /home/adg4001/WT_1_1.fastq.gz > /home/adg4001/bwa_star_results/WT_1_1.bwa.sam
+STAR --runMode genomeGenerate --runThreadN 1 --genomeDir /home/adg4001/referenceGenomes/sacCer3_STARindex --genomeFastaFiles /home/adg4001/referenceGenomes/sacCer3.fa --sjdbGTFfile /home/adg4001/referenceGenomes/sacCer3.sgd.gtf --sjdbOverhang 99
+STAR --runMode alignReads --runThreadN 1 --genomeDir /home/adg4001/referenceGenomes/sacCer3_STARindex --readFilesIn /home/adg4001/WT_1_1.fastq.gz --readFilesCommand zcat --outFileNamePrefix /home/adg4001/bwa_star_results/WT_1_1. --outSAMtype BAM SortedByCoordinate
+```
+
+I sorted and indexed the files using samtools 
+
+```
+samtools sort WT1_merged_chrI.bwa.bam -o WT1_merged_chrI.bwa.sorted.bam
+samtools index WT1_merged.Aligned.sortedByCoord.out.bam
+```
+
+## Part 2 
+
+To subset the aligned reads to select only those that map to chromosome 1 I used:
+
+```
+spack load samtools@1 .9% gcc@6 .3.0
+samtools WT_1_1.Aligned.sortedByCoord.out.bam "Chr1" > WT1_merged_chrI.bam
+samtools WT_1_1.bwa.bam "Chr1" > WT1_merged_chrI.bwa.bam
+```
+
+## Part 3 
+
+Based on comparison, 
+1. Reads and read positions are different
+2. CIGAR seems to frequently 51M for bwa and varies for star
+
+The optional fields are presented as key-value
+pairs in the format of <TAG>:<TYPE>:<VALUE>
+
+STAR adds the optional fields NM, MD and XS and BWA adds NG, HI, NM and AS
+
+AS:i Alignment score
+BC:Z Barcode sequence
+HI:i Match is i-th hit to the read
+NH:i Number of reported alignments for the query sequence
+NM:i Edit distance of the query to the reference
+MD:Z String that contains the exact positions of mismatches (should complement the CIGAR string)
+RG:Z Read group (should match the entry after ID if @RG is present in the header.
+
+## Part 4 
+
+```
+/softlib/apps/EL7/BamQC/bin/bamqc WT1_merged_chrI.Aligned.sortedByCoord.out.bam WT1_merged_chrI.bwa.sorted.bam -o .
+```
+
+The differences between the STAR and BWA files after bamqc: 
+1. bamqc for bwa includes information about SNP freq and SNP freq by type
+2. Percent primary alignments is higher for bwa (~93%) as opposed to STAR (99.99%)
+3. Total sequences aligned for STAR is 172261 and for BWA is 160564
+
+## Part 5 
+
+Mapping quality is a Phred scaled posterior probability that the position of the read is incorrect. The value depends on the alignment program. The alignment score is a value that indicates similarity of the read to the reference. Alignment score rises in proportion to the amount of matches and falls in proportion to the number of mismatches and gaps. The MAPQ (mapping quality) measure indicates the confidence of the read coming from the reported position.
+
+MAPQ is mostly 0 for the BWA files and is higher (up to 255) for the STAR files. Some tools set this to 0 if multiple alignments are found for one read.
+
+## Part 6
+I obtained the string by 
+
+```
+samtools view WT1_mergedv3_chrI.bwa.sorted.bam | grep ERR458498.814362
+```
+
+Multi-mapped reads are the sequences that map more than one time on the genome where as split reads are when one portion of an NGS read maps to one location and other portion of the same read map to a different location of a genome.  The **N** operator indicates an alignment gap, so a CIGAR string with the pattern #M#N#M indicates that the read is split. The read ERR458498.814362 has the CIGAR string 11M71474N40M, which indicates a split. On bwa, this read's cigar string was 9S42M 
+
+## Part 7
+
+-F in samtools has the following function:
+Do not output alignments with any bits set in INT present in the FLAG field. INT can be specified in hex by beginning with ```0x' (i.e. /^0x[0-9A-F]+/) or in octal by beginning with `0' (i.e. /^0[0-7]+/) [0].```
+
+It can be used to remove unmapped reads 
+```
+samtools view -F 4 filename.bam > file_unmapped.bam
+```

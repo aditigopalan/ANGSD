@@ -1,0 +1,128 @@
+---
+title: "ANGSD HW4"
+author: "Aditi Gopalan"
+date: "06/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 
+
+I used the "awk" function to select the RunAccession (column 1) entries of WT and SNF2 (column 3) biological replicate 1-3 (column 4) entries and saved them in seperate folders. I thought this would make things a lot easier moving forward.
+
+After every step, I would use the ls and cat command to make sure my files looked right.
+
+
+```
+awk '{ if(($3 == "WT") && ($4 == 1)) { print $1 } }' tsv.txt > WT_1_reps.txt
+awk '{ if(($3 == "WT") && ($4 == 2)) { print $1 } }' tsv.txt > WT_2_reps.txt
+awk '{ if(($3 == "WT") && ($4 == 3)) { print $1 } }' tsv.txt > WT_3_reps.txt
+awk '{ if(($3 == "SNF2") && ($4 == 1)) { print $1 } }' tsv.txt > SNF2_1_reps.txt
+awk '{ if(($3 == "SNF2") && ($4 == 2)) { print $1 } }' tsv.txt > SNF2_2_reps.txt
+awk '{ if(($3 == "SNF2") && ($4 == 3)) { print $1 } }' tsv.txt > SNF2_3_reps.txt
+
+```
+I then made a separate document for the URLs of each type and replicate and stored it as URLs_filename
+```
+for filename in WT_*.txt; do
+      for i in $(cat $filename); do
+        egrep $i URLs.txt | cut -f 7 | sort >> URLs_$filename
+    done
+done
+
+for filename in SNF2_*.txt; do
+      for i in $(cat $filename); do
+        egrep $i URLs.txt | cut -f 7 | sort >> URLs_$filename
+    done
+done
+```
+I then looped through the URL files and created a folder for each type and replicate (eg: URLs_WT_1_reps would be the directory) and downloaded the fastq files for each and stored them in the respective directory 
+
+```
+
+
+for filename in URLs_*.txt; do
+      name=$(echo "$filename" | cut -f 1 -d '.')
+      mkdir $name
+      count = 0 
+      for i in $(cat $filename); do
+        wget -O ./$name/$name_$count.fastq.gz "ftp://$i"
+        ((count++))
+      done
+done
+
+```
+
+
+## Part 2 
+
+Performing fastqc on all the files. In each folder from the last step, I ran the following command  
+
+```
+find . -name "*.gz" | xargs -n 1 fastqc --extract 
+```
+
+I ran TrimGalore on all 7 fastqs in WT_1 
+
+```
+find . -name "*.gz"  | xargs -n 1 trim_galore --illumina 
+
+```
+This can also be done using a for loop, but I prefer doing it using find and xargs
+
+```
+for filename in *.gz; do
+     fastqc $filename -- extract
+done
+
+for filename in *.gz; do
+     trime_galore $filename --illumina
+done
+
+```
+
+I then ran fastqc on the trimmer datasets using:
+
+```
+find . -name "*_trimmed.fq.gz" | xargs -n 1 fastqc --extract
+```
+
+## Part 3
+
+After adapter trimming, overall quality is higher. This is probably because adapter contamination lowers the per base sequence quality. The GC content however stayed pretty much the same. This might be because the genome is probably GC rich and the removal of adapters did not change the overall GC content. 
+
+## Part 4 
+I ran the following command in my master folder 
+
+```
+multiqc . 
+```
+
+I exported the html document and visualized it. The different samples are highlighted below. 
+
+![Multiqc report](./fastqc_sequence_counts_plot.png)
+
+
+
+## Part 5
+
+Since they are technical replicates of the same sample and the QC results are consistent across the files for WT_1, technical reproducibility is high. I think it makes sense to combine them. 
+
+## Part 6 
+
+I would use this command to combine the files in each folder. 
+```
+cat *.fq > merged.fastq
+```
+
+## Part 7 
+
+I got some ideas from https://github.com/biopython/biopython/blob/master/Bio/SeqIO/QualityIO.py to write this command in unix
+
+
+```
+head -n 40 file.fastq | awk '{if(NR%4==0) printf("%s",$0);}' |  od -A n -t u1 | awk 'BEGIN{min=100;max=0;}{for(i=1;i<=NF;i++) {if($i>max) max=$i; if($i<min) min=$i;}}END{if(max<=74 && min<59) print "Phred+33"; else if(max>73 && min>=64) print "Phred+64"; else print "Different score encoding\!";}'
+```

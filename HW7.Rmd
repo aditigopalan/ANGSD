@@ -1,0 +1,86 @@
+---
+title: "HW7 - Alignment QC"
+author: "Aditi Gopalan"
+date: "05/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1
+
+RNA contamination can be detected with fastqc. The Per sequence GC content plot will show sharp peaks indicating contamination or overexpressed genes.The Overrepresented sequences plot is also helpful in this case. 
+
+## Part 2 
+
+I picked qorts and used this manual as reference  https://hartleys.github.io/QoRTs/doc/QoRTs-vignette.pdf
+
+```
+QoRTs QC --generatePlots \
+         --genomeFA /home/adg4001/referenceGenomes/sacCer3.fa \
+         --rawfastq /home/adg4001/alignments_bwa_star/reps/WT_1/WT_1_ERR458493.fastq.gz \
+         --singleEnded \
+         /home/adg4001/alignments_bwa_star/WT1_1_ERR458493.Aligned.sortedByCoord.out.bam \
+         /home/adg4001/referenceGenomes/sacCer3.sgd.gtf \
+         /athena/angsd/scratch/adg4001/qorts 
+```
+```
+QoRTs QC complete with no problems.
+Generating plots...
+Creating Directory: /athena/angsd/scratch/adg4001/qorts/QCplots
+Successfully Created Directory: /athena/angsd/scratch/adg4001/qorts/QCplots
+ > Starting R execution. (generating plots)
+ > Finished R execution.
+Done.
+Time spent on setup:           00:00:17.0686
+Time spent on SAM iteration:   00:01:01.0005
+                               (0.9687318759794513 minutes per million read-pairs)
+                               (1.083947273961454 minutes per million read-pairs used)
+Time spent on file output:     00:00:02.0066
+Total runtime:                 00:01:20.0757
+Done. (Mon Mar 07 10:49:25 EST 2022)
+```
+Scped the files into my Desktop 
+
+```
+scp -r adg4001@aphrodite.med.cornell.edu:/athena/angsd/scratch/adg4001/qorts C:\Users\aditi\Desktop\angsd\angsd-practice
+```
+
+Setting up and using quorts 
+
+
+```{r qorts}
+library(QoRTs)
+decoder.data <- completeAndCheckDecoder(c('WT_1_ERR458493'))
+res <- read.qc.results.data('qorts/', 
+                            decoder=decoder.data, 
+                            calc.DESeq2=TRUE, 
+                            calc.edgeR=TRUE,
+                            autodetectMissingSamples=TRUE,
+                            debugMode=TRUE)
+```
+
+## Generating plots 
+
+Assessing read distribution 
+
+Exons or unique genes are mapped at the highest rate when compared to other genes including intronic genes. 
+
+``` {r pl1}
+basic.plotter <- build.plotter.basic(res)
+makePlot.gene.assignment.rates(basic.plotter)
+
+```
+
+Average gene body coverage seems to be ~55 from the plot 
+
+
+```{r pl2}
+makePlot.genebody.coverage(basic.plotter)
+```
+
+## Why is a 3’ bias in the gene coverage plot evidence of RNA degradation?
+
+During sequencing, the polyA tail on the 3' end of mRNAs is targeted. As a result of the 5' bias in read mapping caused by degraded mRNAs, there is a 3' bias.

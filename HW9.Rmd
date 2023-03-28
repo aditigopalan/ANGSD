@@ -1,0 +1,165 @@
+---
+title: "HW8"
+author: "Aditi Gopalan"
+date: "10/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Running DESeq2
+
+I ran DESeq2 to get the results to work with. 
+
+```{r running DE}
+library(DESeq2)
+library(magrittr)
+
+load("C:/Users/aditi/Desktop/angsd/angsd-practice/RNAseqGierlinski.RData")
+
+DESeq.ds$condition
+
+#Reordering to make WT the reference 
+DESeq.ds$condition <- relevel(DESeq.ds$condition, ref="WT")
+DESeq.ds$condition
+
+#Checking design
+design(DESeq.ds)
+
+#Running the DE analysis
+DESeq.ds <- DESeq(DESeq.ds)
+
+DESeq.ds
+
+DGE.results <- results(DESeq.ds, independentFiltering = TRUE, alpha = 0.05)
+# the first line will tell you which comparison was done to achieve the log2FC
+head(DGE.results)
+
+summary(DGE.results)
+
+table(DGE.results$padj < 0.05)
+```
+
+## DE Analysis 
+
+Inspecting rlog(). It returns a matrix.
+
+```{r DE Analysis}
+DGE.results.sorted <- DGE.results[order(DGE.results$padj),]
+
+# identify genes with the desired adjusted p-value cut-off
+DGEgenes <- rownames(subset(DGE.results.sorted, padj < 0.05))
+# extract rlog-transformed values into a matrix
+rlog.dge <- DESeq.rlog[DGEgenes,] %>% assay
+
+class(rlog.dge)
+```
+
+Inspecting DESeqDataSetFromMatrix. This returns an S4 object of class DESeqDataSet 
+
+```{r DE Analysis2 }
+library(DESeq2)
+
+countdata <- read.table("C:/Users/aditi/Desktop/angsd/angsd-practice/featCounts_Gierlinski_genes.txt", header=TRUE, row.names=1)
+
+# Remove first five columns (chr, start, end, strand, length)
+countdata <- countdata[ ,6:ncol(countdata)]
+
+# Remove .bam or .sam from filenames
+colnames(countdata) <- gsub("...alignment.", "" , colnames(countdata))
+colnames(countdata) <- gsub("_Aligned.sortedByCoord.out.[sb]am$", "" , colnames(countdata))
+# Convert to matrix
+countdata <- as.matrix(countdata)
+#head(countdata)
+
+# Assign condition (first four are controls, second four contain the expansion)
+(condition <- factor(c(rep("exp", 5), rep("ctl", 5))))
+(coldata <- data.frame(row.names=colnames(countdata), condition))
+dds <- DESeqDataSetFromMatrix(countData=countdata, colData=coldata, design=~condition)
+dds
+class(dds)
+```
+## Similarities and Differences 
+
+rlog.dge returns a matrix (S3 object) where dds is a S4 object. 
+Similarities: 
+1. Both are two generations for implementation functional OOP.
+2. I think they both work in the same way, but S4 is more formal and structured.
+
+Differences: 
+1. I noticed that typing in directly into the console only gives the characteristic of the data and doesn't allow you to visualize it whereas rlog.dge does. This is possibly because S4 is "designed to efficiently store and compute with many different types of sparse and dense matrices." 
+
+Source: https://adv-r.hadley.nz/oo-tradeoffs.html#s3-s4
+
+```{r 2.0}
+dds
+head(rlog.dge) #head because otherwise the output would be too long
+```
+
+2. S4 object seems to be a lot more complex and difficult to handle. Although with S4 it is easier to provide a general method that works for all inputs! It also has a more formal definition of classes. I also noticed that since S3 supports single dispatch, we can call summary on it, but S4 supports multiple dispatch and summary doesn't give the
+expected result.
+
+```{r 2.0.1}
+summary(dds)
+summary(rlog.dge) 
+```
+
+## A difference but also how to extract values stored in each 
+
+I also noticed that accessing a slot in the S4 object is different. For example I would do the following for an S4 object:
+
+```{r 2}
+dds@colData
+dds@design
+```
+
+Whereas for an S3 object I would access the elements using an index, like so,: 
+
+```{r 2.1}
+rlog.dge[1]
+```
+
+## Adding a matrix 
+
+```{r 3}
+my_personal_normalization <- rlog.dge[,"SNF2_1"] 
+my_personal_normalization <- matrix(my_personal_normalization)
+class(my_personal_normalization)
+
+rlog.dge <- cbind(rlog.dge, my_personal_normalization)
+#dds@colData <- my_personal_normalization ####UNSURE LOL
+```
+```{r cool}
+setClass(
+  "myDESRclass",
+  contains="DESeqResults",
+  slots=c(new_slot="numeric")
+) -> myDESRclass
+Then you can use as to convert objects to your class:
+
+## x is some DESeqResults object
+x <- as(x,"myDESRclass")
+x@new_slot <- 5
+
+
+
+## Inspecting the source code of R functions
+
+1. rlog()
+
+```{r rlog}
+getAnywhere(rlog)
+```
+
+2. estimateDispersions()
+
+```{r es}
+getAnywhere(estimateDispersions)
+```
+
+3. rlogData()
+```{r rd}
+getAnywhere(rlogData)
+```

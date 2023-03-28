@@ -1,0 +1,352 @@
+---
+title: "Quant Genomics Midterm"
+author: "Aditi Gopalan"
+date: "30/03/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1
+
+(a) Import the phenotype data from the file ‘midterm phenotypes.csv’, (b) Calculate and
+report the total sample size n, (c) Plot a histogram of the phenotypes (label your plot
+and your axes using informative names!), (d) Import the population data from the file
+‘midterm population.csv’, (e) Calculate and report how many individuals are in population
+‘0’ and how many individuals are in population ‘1’, (f) Import the genotype data from the
+file ‘midterm genotypes.csv’, (g) Calculate and report the number of SNPs N.
+
+```{r 1}
+#Code for part (a) - (c)
+library(MASS)
+
+phenotypes <- read.csv("./midterm_phenotypes.csv", 
+                     header = TRUE,  col.names=c("Pheno"))
+N_samples = nrow(phenotypes)
+paste0("Number of samples: ", N_samples)
+
+hist(phenotypes$Pheno, main="Histogram of Phenotypes", xlab="Phenotype")
+```
+```{r 1d}
+#Code for part (d) - (e)
+library(MASS)
+
+pop <- read.csv("./midterm_population.csv", 
+                     header = TRUE,  col.names=c("Number"))
+paste0("Number of individuals in population 0: ", length(which(pop$Number == 0)) )
+paste0("Number of individuals in population 1: ", length(which(pop$Number == 1)) )
+
+```
+```{r 1f}
+#Code for part (f) - (g)
+library(MASS)
+
+geno_import <- read.csv("./midterm_genotypes.csv", 
+                     header = FALSE, 
+                      stringsAsFactors = FALSE, colClasses = "character")
+N_col = ncol(geno_import)
+paste0("Number of SNPs: ", N_col)
+
+```
+
+## 2a
+
+(a) Using ONLY the phenotype and genotype data you have imported in question [1] (NOT
+the population data), for each genotype, calculate p-values for the null hypothesis H0 : βa =
+0 ∩ βd = 0 versus the alternative hypothesis HA : βa 6= 0 ∪ βd 6= 0 when applying a genetic
+linear regression model with NO covariates. NOTE (!!): in your linear regressions, DO use
+the Xa and Xd codings provided in class and DO NOT use the function lm() (or any other
+R function!) to calculate your p-values but rather calculate the MLE(βˆ) using the formula
+provided in class, calculate the predicted value of the phenotype ˆyi for each individual i under
+the null and alternative and calculate the F-statistic, although you may use the function pf()
+to calculate the p-value for each F-statistic you calculate.
+
+
+```{r}
+genotype_coder <- function(geno_import, maf_limit = 0.1, error_value = 3){
+  
+  #this line stacks together the columns of the present SNP into one list
+  geno_input = mapply(c,geno_import[,seq(1,ncol(geno_import),2)], geno_import[,seq(2,ncol(geno_import),2)]) 
+  
+  xa_converter <- function(geno_col, numSamples, maf_limit){
+    geno_count <- table(geno_col)
+    if(min(geno_count)/length(geno_col) <= maf_limit | length(geno_count) < 2){
+      return(rep(error_value, numSamples))
+    }
+    minor_allele <- names(geno_count[geno_count == min(geno_count)])
+    #must now undo the stacking together of the mapply and match up the positions for each person
+    xa <- (geno_col[1:numSamples]==minor_allele) + (geno_col[(numSamples+1):length(geno_col)]==minor_allele)
+    xa <- xa-1
+    return(xa)
+  }
+  
+  xa_mat  <- apply(geno_input, 2, xa_converter, nrow(geno_import), 0.05)
+  xa_mat <- xa_mat[,xa_mat[1,]!=error_value]
+  xd_mat <- 1 - 2*abs(xa_mat)
+  
+  return(list(xa_mat,xd_mat))
+}
+
+res <- genotype_coder(geno_import, 0)
+xa_mat <- res[[1]]
+xd_mat <- res[[2]]
+```
+
+
+```{r}
+## Function to do a regression w/o covariates
+library(dplyr)
+library(magrittr) 
+library(data.table)
+library(MASS)
+
+do_lm_no_covar = function(xa_input, xd_input, pheno_input){
+  n_samples <- length(xa_input)  ## no. of samples
+  X_mx <- cbind(1, xa_input, xd_input)  ## create a matrix of dependent variables (X matrix)
+  
+  MLE_beta <- ginv(t(X_mx) %*% X_mx) %*% t(X_mx) %*% pheno_input  ## Calculate regression betas (effect sizes)
+  y_hat <- X_mx %*% MLE_beta
+  
+  SSM <- sum((y_hat - mean(pheno_input))^2)
+  SSE <- sum((pheno_input - y_hat)^2)
+  
+  df_M <- ncol(X_mx) - 1  ## no. of betas in full model - no. of betas in intercept-only model
+  df_E <- n_samples - ncol(X_mx)  ## no. of samples - no. of betas in the full model
+  
+  MSM <- SSM / df_M  ## Mean squares of the model
+  MSE <- SSE / df_E  ## Mean squares of the error
+  
+  Fstatistic <- MSM / MSE
+  
+  pval <- pf(Fstatistic, df_M, df_E, lower.tail = FALSE)
+  return(data.table(f_statistic = Fstatistic, 
+                    p = pval, 
+                    model = 'No Covariate'))  ## data.table is just like a data.frame
+}
+
+## Run the function for each genotype (column in the xa matrix) using lapply
+## Alternatively, you can do this using a for loop
+## Convert the returned list of data tables into a single data table using rbindlist()
+## Add a column called index using mutate(). Values in this column are 1...ncol(xa_mat)
+results.1 = lapply(1:ncol(xa_mat), function(column.counter){
+  do_lm_no_covar(xa_input = xa_mat[, column.counter],
+                 xd_input = xd_mat[, column.counter],
+                 pheno_input = phenotypes$Pheno)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_mat))
+
+```
+
+## 2b
+
+ (b) Produce a Manhattan plot for these p-values (label your plot and your axes using informative names!).
+
+```{r}
+library(ggplot2)
+
+## Plot the results
+my.alpha = 0.05
+ggplot(results.1, aes(x = index, y = -log10(p))) +
+  geom_point() + 
+  geom_hline(yintercept = -log10(my.alpha), color = 'red', lty = 2) +
+  labs(x = 'Index', y = expression(-log[10]~p), title = 'No Covariates')
+
+# 
+# plot_df <- data.frame(index = 1:length(pval_mx), pval = pval_mx) 
+# ggplot(plot_df, aes(index, -log10(pval_mx))) + geom_point()
+```
+
+## 2c 
+
+
+(c) Produce a QQ plot for these p-values (label your plot and your axes using informative names!)
+
+```{r}
+
+observed_pvals = sort(results.1$p)
+expected_pvals = qunif(seq(0, 1, length.out = length(observed_pvals) + 2), min = 0, max = 1)  ## Generate expected values. Note that we are using length+2
+expected_pvals = expected_pvals[expected_pvals != 0 & expected_pvals != 1]  ## Remove the two extra values since they are 0 and 1
+
+p_df = data.frame(observed = -log10(observed_pvals),
+                  expected = -log10(expected_pvals))
+
+ggplot(p_df, aes(x = expected, y = observed)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = 'red') +
+  labs(x = '-log10 Expected p-val',
+       y = '-log10 Observed p-val',
+       title = 'GWAS QQ plot',
+       subtitle = 'Covariate Not Included')
+```
+
+## 3
+
+```{r 3}
+bonf.padj = sum(p.adjust(p_df$observed, 'bonferroni') < 0.05)
+bonf.alpha = 0.05/ncol(geno_import)
+bonf.alpha = sum(p_df$observed < bonf.alpha)
+cat(paste0('Number of significant SNPs: ', bonf.padj))
+```
+
+## 4 
+
+With covariate model! The covariate here is which population each individual belongs to!
+
+```{r}
+
+do_lm_covar = function(pheno_input, xa_input, xd_input, xz_input){
+  ## Xz is the covariate
+  n_samples = length(xa_input) #calculate your number of samples
+  
+  ## Beta MLE in the full model
+  x_h1 = cbind(1 ,xa_input, xd_input, xz_input) #create your X matrix under H1
+  MLE_h1 = ginv(t(x_h1) %*% x_h1) %*% t(x_h1) %*% pheno_input #calculate your MLE of the betas
+  
+  ## Beta MLE in the null model (only intercept and covariate)
+  x_h0 = cbind(1, xz_input) # calculate your x under H0
+  MLE_h0 = ginv(t(x_h0) %*% x_h0) %*% t(x_h0) %*% pheno_input #calculate your MLE under h0
+  
+  ## Calculate y hats (expected y value)
+  y_hat_0 = x_h0 %*% MLE_h0 #calculate y_hat under the null hypothesis
+  y_hat_1 = x_h1 %*% MLE_h1 #calculate y_hat under H1
+  
+  ## Calculate SSE
+  SSE_theta_0 = sum((pheno_input - y_hat_0)^2) #calculate SSE under null 
+  SSE_theta_1 = sum((pheno_input - y_hat_1)^2) #calculate SSE under H1
+  
+  #set your degrees of freedom
+  df_M = ncol(x_h1) - ncol(x_h0)  ## No. of betas in the full model - no. of betas in null
+  df_E = n_samples - ncol(x_h1) ## No. of samples -  no. of betas in the full model
+  
+  #calculate your F statistic
+  numerator = (SSE_theta_0 - SSE_theta_1) / df_M
+  denom = SSE_theta_1 / df_E
+  Fstatistic = numerator / denom
+  
+  ## Get a p value
+  pval = pf(Fstatistic, df_M, df_E, lower.tail = FALSE)
+  return(data.table(f_statistic = Fstatistic, p = pval, model = 'Covariate'))  ## data.table is just like a data.frame
+}
+
+## Select your phenotype and covariates
+my.phenotype = phenotypes$Pheno
+my.covariate = pop$Number
+
+
+## Run regression without covariates
+## You will need data.table and tidyverse for these to work
+## index can be replaced by variant ID or chromosomal position (chrom:start-end)
+
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(dplyr)    # alternatively, this also loads %>%
+library(data.table)
+library(MASS)
+
+## Run regression with a single covariate
+results.2 = lapply(1:ncol(xa_mat), function(column.counter){
+  do_lm_covar(xa_input = xa_mat[, column.counter],
+              xd_input = xd_mat[, column.counter],
+              xz_input = my.covariate,
+              pheno_input = my.phenotype)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_mat))
+
+my.alpha = 0.05
+# Generating Manhattan Plot
+ggplot(results.2, aes(x = index, y = -log10(p))) +
+  geom_point() + 
+  geom_hline(yintercept = -log10(my.alpha), color = 'red', lty = 2) +
+  labs(x = 'Index', y = expression(-log[10]~p), title = 'With Covariates')
+
+```
+
+```{r}
+## Make a QQ plot for the covariate model
+observed_pvals = sort(results.2$p)
+expected_pvals = qunif(seq(0, 1, length.out = length(observed_pvals) + 2), min = 0, max = 1)  ## Generate expected values. Note that we are using length+2
+expected_pvals = expected_pvals[expected_pvals != 0 & expected_pvals != 1]  ## Remove the two extra values since they are 0 and 1
+
+p_df1 = data.frame(observed = -log10(observed_pvals),
+                  expected = -log10(expected_pvals))
+
+ggplot(p_df1, aes(x = expected, y = observed)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = 'red') +
+  labs(x = '-log10 Expected p-val',
+       y = '-log10 Observed p-val',
+       title = 'GWAS QQ plot',
+       subtitle = 'Covariate Included')
+```
+
+## 5
+
+In this GWAS case, there are causal polymorphisms. Most of the p-values follow a uniform distribution (not in LD with a causal polymorphism). There are a few values that are in the tail (are in LD with causal polymorphism, producing a significant p-value)
+
+```{r}
+bonf.padj1 = sum(p.adjust(p_df1$observed, 'bonferroni') < 0.05)
+bonf.alpha1 = 0.05/ncol(geno_import)
+bonf.alpha1 = sum(p_df1$observed < bonf.alpha1)
+cat(paste0('No. of significant SNPs: ', bonf.alpha1))
+
+```
+
+## 6 
+
+`You should have reported many more significant SNPs in your answer to question [3] compared to your answer for question [5]. Using no more than two sentences, provide a reasonable explanation for why the results are different for these two analyses and describe which of these two analyses do you think is providing you better information about the locations of causal polymorphisms (and why)?`
+
+This might be because population structure (covariant) in not accounted for initially and causes false positives. By accounting for that, the covariate model provides better information about the location of the causal polymorphisms and yields a better results (look at the QQ plot) where only a few values are in the tail and producing a significant p-value and hence can interpret results.
+
+
+## 7 
+
+`Given the Manhattan plot in question [5] you should see two ‘peaks’ (or ‘buildings’) thatexceed your Bonferroni corrected cutoff. Using no more than two sentences, explain why these peaks (most likely) only indicate the POSITIONS of causal polymorphisms and why
+it may not be possible to determine the exact causal polymorphisms that are impacting the
+phenotype from these GWAS data/ your analysis`
+
+The peaks represent the positions of the polymorphisms and not the actual polymorphisms because we are mapping the position of the polymorphism within the genome. Identifying the actual causal polymorphism ususally required additional data or follow up experiments. 
+
+
+
+## 8a
+
+A causal polymorphism is a location in the genome where there are at least two
+alleles, where experimental switching one allele for the other under a specifiable set of conditions leads to a changes in the phenotype.
+
+## 8b
+
+P-value is the probability of obtaining results at least as extreme as the observed results of a statistical hypothesis test based on the assumption that the null hypothesis is correct. The p-value serves as an alternative to rejection points to provide the smallest level of significance at which the null hypothesis would be rejected. Lower p-value indicates greater statistical significance of the observed difference.
+
+## 8c 
+
+Power is defined as the probability of correctly rejecting the null hypothesis when it is false or incorrect. We cannot control power directly because it depends on the true parameter values that we do not know. We can indirectly control power by setting
+our Type 1 error, where there is a trade-off between Type 1 error and power. Power tends to increase with increase in size of true effect, sample size, MAF and LD between a causal polymorphism and genotype marker. 
+
+## 8d 
+Provide three reasons why it could be that in a case where you reject a null hypothesis for a polymorphism in a GWAS there is no causal polymorphism in the genomic location of the polymorphism (i.e., explain why the polymorphism for which you reject the null hypothesis could be a biological false positive!).
+
+Reasons a causal polymorphism could be a biological false positive: 
+1. Type 1 error: the probability of incorrectly rejecting the null hypothesis when it is correct
+2. There are experimental reasons why we can correctly reject the null hypothesis but we still get a false positive:
+• Cases of disequilibrium when there is no linkage
+• Genotyping errors
+• Unaccounted for covariates 
+
+## 9
+
+The 5 steps to consider: 
+1) Make sure to understand the data and be clear on the components of the data 
+2) Check the phenotype data 
+3) Check and filter the genotype data 
+4) Perform GWAS analysis and diagnostics 
+5) Present your final analysis and consider the evidence. 
+
+## 10 
+
+The major population genetics principles that explain patterns of linkage disequilibrium (LD) observed in human populations:
+1) Independent assortment of chromosomes 
+2) "Random" mating 
+3) Recombination 
+
+These factors explains existing variation in a population and therefore there is no mutation or migration. They can however, explain LD in other populations but there can be differences that lead to different patterns of LD. 

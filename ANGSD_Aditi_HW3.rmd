@@ -1,0 +1,113 @@
+---
+title: "ANGSD HW3: Sequencing Data"
+author: "Aditi Gopalan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1 
+
+I chose to do this in a few steps because I felt it was more organized to create a file for each step. This way, it's easier for me to debug if anything went wrong.
+
+I first downloaded the tsv file from http://dx.doi.org/10.6084/m9.figshare.1416210 and the URLs for ERP004763 and stored them in two different files and saved them as tsv.txt and URLs.txt respectively.
+```
+wget -O tsv.txt 'https://figshare.com/ndownloader/files/2194841'
+
+wget -O URLs.txt 'https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB5348&result=read_run&fields=study_accession,sample_accession,experiment_accession,run_accession,tax_id,scientific_name,fastq_ftp,submitted_ftp,sra_ftp&format=tsv&download=true&limit=0'
+
+```
+I used the "awk" function to select the RunAccession (column 1) entries of WT (column 3) biological replicate 2 (column 4) entries and saved them in WT_reps.txt.
+
+After every step, I would use the ls and cat command to make sure my files looked right.
+
+```
+awk '{ if(($3 == "WT") && ($4 == 2)) { print $1 } }' tsv.txt > WT_reps.txt
+```
+
+Once I had the accession IDs for for WT_2, I looked for each entry in WT_reps in the entire URL list and condensed it to URLs_WT.txt 
+
+```
+for i in $(cat WT_reps.txt); do
+    egrep $i URLs.txt | cut -f 7 >> URLs_WT.txt
+done
+```
+I then downloaded the fastq files for all the WT_2 files. I used count to save the fastq files wrt their iterations because this seemed simpler.
+
+```
+count = 0
+for i in $(cat URLs_WT.txt); do
+    wget -O WT_$count.fastq.gz "ftp://$i"
+   ((count ++))
+done
+```
+
+## Part 2 
+
+This probably means WT_2 was sequenced multiple times. 
+I'm guessing this was just ensure consistency in results. I have a few reasons: 
+1) They could have used multiplexing 
+2) They could have collaborated with other institutes to use different methods of sequencing the same sample 
+3) They could have used a different machine to sequence it 
+
+## Part 3
+I counted the number of fastq files using this for loop. I basically iterated through all the gz files in the directory and store the file name and respective word count in fastq_wc.txt.
+
+```
+for i in *.gz; do
+    [ -f "$i" ] || break;
+    echo "$i" >> fastq_wc.txt
+    zcat "$i" | wc -l >> fastq_wc.txt
+done
+```
+My output was as follows:
+
+```
+[adg4001@aphrodite hw]$ cat fastq_wc.txt
+WT_1.fastq.gz
+5870276
+WT_2.fastq.gz
+5800048
+WT_3.fastq.gz
+5766276
+WT_4.fastq.gz
+5286992
+WT_5.fastq.gz
+4527136
+WT_6.fastq.gz
+4562752
+WT_7.fastq.gz
+5846584
+```
+Counting the number of reads -- I just modified the previous for loop and divided the lines by 4 to obtain the number of reads 
+
+```
+for i in *.gz; do
+    [ -f "$i" ] || break;
+    echo "$i" >> reads_fq.txt
+    echo $(zcat "$i"|wc -l)/4|bc >> reads_fq.txt
+done
+```
+
+The output was as follows:
+
+```
+[adg4001@aphrodite hw]$ cat reads_fq.txt
+WT_1.fastq.gz
+1467569
+WT_2.fastq.gz
+1450012
+WT_3.fastq.gz
+1441569
+WT_4.fastq.gz
+1321748
+WT_5.fastq.gz
+1131784
+WT_6.fastq.gz
+1140688
+WT_7.fastq.gz
+1461646
+
+```
